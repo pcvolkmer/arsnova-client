@@ -64,19 +64,19 @@ async fn main() -> Result<(), ()> {
         return Err(());
     }
 
-    stdout().execute(EnterAlternateScreen).map_err(|_| ())?;
-    enable_raw_mode().map_err(|_| ())?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| ())?;
-    terminal.clear().map_err(|_| ())?;
-
     let (tx, rx) = channel::<Feedback>(10);
-
-    let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone()));
 
     let _ = tx
         .clone()
         .send(client.get_feedback(&cli.room).await.unwrap())
         .await;
+
+    stdout().execute(EnterAlternateScreen).map_err(|_| ())?;
+    enable_raw_mode().map_err(|_| ())?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| ())?;
+    terminal.clear().map_err(|_| ())?;
+
+    let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone()));
 
     let room_info = client.get_room_info(&cli.room).await.map_err(|_| ())?;
     let title = format!("Live Feedback: {} ({})", room_info.name, room_info.short_id);

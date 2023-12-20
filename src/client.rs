@@ -17,16 +17,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::error;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::join;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
+
+use crate::client::ClientError::{ConnectionError, LoginError, ParserError, RoomNotFoundError};
 
 #[derive(Deserialize, Debug)]
 struct LoginResponse {
@@ -174,6 +178,27 @@ pub enum FeedbackHandler {
     Sender(Sender<Feedback>),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClientError {
+    ConnectionError,
+    LoginError,
+    RoomNotFoundError,
+    ParserError(String),
+}
+
+impl Display for ClientError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionError => write!(f, "Cannot connect"),
+            LoginError => write!(f, "Cannot login"),
+            RoomNotFoundError => write!(f, "Requested room not found"),
+            ParserError(msg) => write!(f, "Cannot parse response: {}", msg),
+        }
+    }
+}
+
+impl error::Error for ClientError {}
+
 pub struct Client {
     api_url: String,
     http_client: reqwest::Client,
@@ -181,11 +206,11 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(api_url: &str) -> Result<Client, ()> {
+    pub fn new(api_url: &str) -> Result<Client, ClientError> {
         let client = reqwest::Client::builder()
             .user_agent(format!("arsnova-cli-client/{}", env!("CARGO_PKG_VERSION")))
             .build()
-            .map_err(|_| ())?;
+            .map_err(|_| ConnectionError)?;
 
         Ok(Client {
             api_url: api_url.to_string(),
@@ -194,7 +219,7 @@ impl Client {
         })
     }
 
-    pub async fn guest_login(&mut self) -> Result<(), ()> {
+    pub async fn guest_login(&mut self) -> Result<(), ClientError> {
         match self
             .http_client
             .post(format!("{}/auth/login/guest", self.api_url))
@@ -206,13 +231,13 @@ impl Client {
                     self.token = Some(res.token);
                     Ok(())
                 }
-                Err(_) => Err(()),
+                Err(_) => Err(LoginError),
             },
-            Err(_) => Err(()),
+            Err(_) => Err(ConnectionError),
         }
     }
 
-    pub async fn get_room_info(&self, short_id: &str) -> Result<RoomInfo, ()> {
+    pub async fn get_room_info(&self, short_id: &str) -> Result<RoomInfo, ClientError> {
         let token = self.token.as_ref().unwrap();
 
         let membership_response = match self
@@ -228,10 +253,16 @@ impl Client {
             .send()
             .await
         {
-            Ok(res) => res.json::<MembershipResponse>().await.unwrap(),
-            Err(err) => {
-                eprintln!("{}", err);
-                return Err(());
+            Ok(res) => match res.status() {
+                StatusCode::OK => res
+                    .json::<MembershipResponse>()
+                    .await
+                    .map_err(|err| ParserError(err.to_string()))?,
+                StatusCode::NOT_FOUND => return Err(RoomNotFoundError),
+                _ => return Err(ConnectionError),
+            },
+            Err(_) => {
+                return Err(ConnectionError);
             }
         };
 
@@ -243,31 +274,40 @@ impl Client {
         })
     }
 
-    pub async fn get_feedback(&self, short_id: &str) -> Result<Feedback, ()> {
+    pub async fn get_feedback(&self, short_id: &str) -> Result<Feedback, ClientError> {
         let room_info = self.get_room_info(short_id).await?;
 
-        let res = self
+        match self
             .http_client
             .get(format!("{}/room/{}/survey", self.api_url, room_info.id))
             .bearer_auth(self.token.as_ref().unwrap_or(&"".to_string()).to_string())
             .send()
             .await
-            .map_err(|_| ())?;
-
-        Ok(Feedback::from_values(res.json::<Vec<u16>>().await.unwrap()))
+        {
+            Ok(res) => match res.status() {
+                StatusCode::OK => Ok(Feedback::from_values(
+                    res.json::<Vec<u16>>()
+                        .await
+                        .map_err(|err| ParserError(err.to_string()))?,
+                )),
+                StatusCode::NOT_FOUND => Err(RoomNotFoundError),
+                _ => Err(ConnectionError),
+            },
+            Err(_) => Err(ConnectionError),
+        }
     }
 
     pub async fn on_feedback_changed(
         &self,
         short_id: &str,
         handler: FeedbackHandler,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let room_info = self.get_room_info(short_id).await?;
 
         let ws_url = self.api_url.replace("http", "ws");
         let (socket, _) = connect_async(Url::parse(&format!("{}/ws/websocket", ws_url)).unwrap())
             .await
-            .map_err(|_| ())?;
+            .map_err(|_| ConnectionError)?;
 
         let (mut write, read) = socket.split();
 
@@ -285,7 +325,7 @@ impl Client {
                 .await
             {
                 Ok(_) => {}
-                Err(_) => return Err(()),
+                Err(_) => return Err(ConnectionError),
             }
 
             let jh1 = read.for_each(|msg| async {
@@ -317,6 +357,6 @@ impl Client {
             return Ok(());
         }
 
-        Err(())
+        Err(ConnectionError)
     }
 }
