@@ -182,7 +182,7 @@ pub enum FeedbackHandler {
 pub enum ClientError {
     ConnectionError,
     LoginError,
-    RoomNotFoundError,
+    RoomNotFoundError(String),
     ParserError(String),
 }
 
@@ -191,7 +191,7 @@ impl Display for ClientError {
         match self {
             ConnectionError => write!(f, "Cannot connect"),
             LoginError => write!(f, "Cannot login"),
-            RoomNotFoundError => write!(f, "Requested room not found"),
+            RoomNotFoundError(short_id) => write!(f, "Requested room '{}' not found", short_id),
             ParserError(msg) => write!(f, "Cannot parse response: {}", msg),
         }
     }
@@ -258,7 +258,7 @@ impl Client {
                     .json::<MembershipResponse>()
                     .await
                     .map_err(|err| ParserError(err.to_string()))?,
-                StatusCode::NOT_FOUND => return Err(RoomNotFoundError),
+                StatusCode::NOT_FOUND => return Err(RoomNotFoundError(short_id.into())),
                 _ => return Err(ConnectionError),
             },
             Err(_) => {
@@ -290,7 +290,7 @@ impl Client {
                         .await
                         .map_err(|err| ParserError(err.to_string()))?,
                 )),
-                StatusCode::NOT_FOUND => Err(RoomNotFoundError),
+                StatusCode::NOT_FOUND => Err(RoomNotFoundError(short_id.into())),
                 _ => Err(ConnectionError),
             },
             Err(_) => Err(ConnectionError),
