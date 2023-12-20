@@ -1,0 +1,23 @@
+[package]
+name = "arsnova-client"
+description = "ARSnova live feedback client library"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-3.0-or-later"
+authors = ["Paul-Christian Volkmer"]
+
+[dependencies]
+futures-util = "0.3"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.35", features = ["rt-multi-thread", "macros"], default-features = false }
+tokio-tungstenite = { version = "0.21", features = ["connect", "rustls-tls-webpki-roots"], default-features = false }
+url = "2.5"
+
+[profile.release]
+opt-level = "s"
+codegen-units = 1
+lto = "thin"
+strip = true
+panic = "abort"
