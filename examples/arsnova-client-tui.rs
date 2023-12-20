@@ -55,14 +55,12 @@ pub struct Cli {
 async fn main() -> Result<(), ()> {
     let cli = Cli::parse();
 
-    let mut client = match Client::new(&cli.url) {
+    let client = match Client::new(&cli.url) {
         Ok(client) => client,
         Err(_) => return Err(()),
     };
 
-    if client.guest_login().await.is_err() {
-        return Err(());
-    }
+    let client = client.guest_login().await.map_err(|_| ())?;
 
     let (tx, rx) = channel::<Feedback>(10);
 

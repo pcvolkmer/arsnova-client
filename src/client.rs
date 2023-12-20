@@ -19,6 +19,7 @@
 
 use std::error;
 use std::fmt::{Display, Formatter};
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -199,10 +200,14 @@ impl Display for ClientError {
 
 impl error::Error for ClientError {}
 
-pub struct Client {
+pub struct LoggedIn;
+pub struct LoggedOut;
+
+pub struct Client<State = LoggedOut> {
     api_url: String,
     http_client: reqwest::Client,
     token: Option<String>,
+    state: PhantomData<State>,
 }
 
 impl Client {
@@ -216,10 +221,13 @@ impl Client {
             api_url: api_url.to_string(),
             http_client: client,
             token: None,
+            state: PhantomData::<LoggedOut>,
         })
     }
+}
 
-    pub async fn guest_login(&mut self) -> Result<(), ClientError> {
+impl Client<LoggedOut> {
+    pub async fn guest_login(self) -> Result<Client<LoggedIn>, ClientError> {
         match self
             .http_client
             .post(format!("{}/auth/login/guest", self.api_url))
@@ -227,13 +235,26 @@ impl Client {
             .await
         {
             Ok(res) => match res.json::<LoginResponse>().await {
-                Ok(res) => {
-                    self.token = Some(res.token);
-                    Ok(())
-                }
+                Ok(res) => Ok(Client {
+                    api_url: self.api_url,
+                    http_client: self.http_client,
+                    token: Some(res.token),
+                    state: PhantomData::<LoggedIn>,
+                }),
                 Err(_) => Err(LoginError),
             },
             Err(_) => Err(ConnectionError),
+        }
+    }
+}
+
+impl Client<LoggedIn> {
+    pub fn logout(self) -> Client<LoggedOut> {
+        Client {
+            api_url: self.api_url,
+            http_client: self.http_client,
+            token: None,
+            state: PhantomData::<LoggedOut>,
         }
     }
 

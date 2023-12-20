@@ -10,7 +10,7 @@ Create a client using and request guest login.
 
 ```rust
 let client = Client::new("https://ars.particify.de/api").expect("client created");
-client.guest_login().await;
+let client = client.guest_login().await.expect("logged in");
 ```
 
 ### Request room information
