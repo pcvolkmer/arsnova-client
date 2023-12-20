@@ -50,3 +50,14 @@ let (tx, rx) = tokio::sync::mpsc::channel::<Feedback>(10);
 
 client.on_feedback_changed( & cli.room, FeedbackHandler::Sender(tx.clone())).await;
 ```
+
+## Example
+
+See [`examples/arsnova-client-tui.rs`](examples/arsnova-client-tui.rs) for a simple terminal-based feedback client
+application.
+
+```bash
+arsnova-client-tui 23269388
+```
+
+![arsnova-client-tui](examples/arsnova-client.gif)
