@@ -32,7 +32,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Terminal;
 use tokio::select;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{channel, Receiver};
 
 use arsnova_client::{Client, Feedback, FeedbackHandler};
 
@@ -69,7 +69,7 @@ async fn main() -> Result<(), ()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| ())?;
     terminal.clear().map_err(|_| ())?;
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<Feedback>(10);
+    let (tx, rx) = channel::<Feedback>(10);
 
     let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone()));
 

@@ -17,7 +17,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -57,7 +57,7 @@ impl WsConnectMessage {
 }
 
 impl Display for WsConnectMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let str = format!(
             "CONNECT\ntoken:{}\naccept-version:1.2,1.1,1.0\nheart-beat:20000,0\n\n\0",
             self.token
@@ -113,7 +113,7 @@ impl WsFeedbackPayload {
 }
 
 impl Display for WsSubscribeMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let str = format!(
             "SUBSCRIBE\nid:sub-6\ndestination:/topic/{}.feedback.stream\n\n\0",
             self.room_id
