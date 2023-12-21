@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use reqwest::StatusCode;
+use reqwest::{IntoUrl, StatusCode};
 use serde::Deserialize;
 use tokio::join;
 use tokio::sync::mpsc::Sender;
@@ -31,7 +31,9 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
-use crate::client::ClientError::{ConnectionError, LoginError, ParserError, RoomNotFoundError};
+use crate::client::ClientError::{
+    ConnectionError, LoginError, ParserError, RoomNotFoundError, UrlError,
+};
 
 #[derive(Deserialize, Debug)]
 struct LoginResponse {
@@ -185,6 +187,7 @@ pub enum ClientError {
     LoginError,
     RoomNotFoundError(String),
     ParserError(String),
+    UrlError,
 }
 
 impl Display for ClientError {
@@ -194,6 +197,7 @@ impl Display for ClientError {
             LoginError => write!(f, "Cannot login"),
             RoomNotFoundError(short_id) => write!(f, "Requested room '{}' not found", short_id),
             ParserError(msg) => write!(f, "Cannot parse response: {}", msg),
+            UrlError => write!(f, "Cannot parse given URL"),
         }
     }
 }
@@ -203,6 +207,9 @@ impl error::Error for ClientError {}
 pub struct LoggedIn;
 pub struct LoggedOut;
 
+/// An asynchronous `Client` to make Requests with.
+///
+/// The client can be created with an URL to an ARSnova API endpoint.
 pub struct Client<State = LoggedOut> {
     api_url: String,
     http_client: reqwest::Client,
@@ -211,14 +218,17 @@ pub struct Client<State = LoggedOut> {
 }
 
 impl Client {
-    pub fn new(api_url: &str) -> Result<Client, ClientError> {
+    /// Constructs a new ARSnova client
+    ///
+    /// This method fails whenever the supplied Url cannot be parsed.
+    pub fn new<U: IntoUrl>(api_url: U) -> Result<Client, ClientError> {
         let client = reqwest::Client::builder()
             .user_agent(format!("arsnova-cli-client/{}", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|_| ConnectionError)?;
 
         Ok(Client {
-            api_url: api_url.to_string(),
+            api_url: api_url.into_url().map_err(|_| UrlError)?.to_string(),
             http_client: client,
             token: None,
             state: PhantomData::<LoggedOut>,
