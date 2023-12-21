@@ -110,7 +110,7 @@ struct WsFeedbackBody {
 
 #[derive(Deserialize, Debug)]
 struct WsFeedbackPayload {
-    values: Vec<u16>,
+    values: [u16; 4],
 }
 
 impl WsFeedbackPayload {
@@ -146,28 +146,13 @@ pub struct Feedback {
 }
 
 impl Feedback {
-    pub fn from_values(values: Vec<u16>) -> Feedback {
-        let mut result = Feedback {
-            very_good: 0,
-            good: 0,
-            bad: 0,
-            very_bad: 0,
-        };
-
-        if !values.is_empty() {
-            result.very_good = values[0]
+    pub fn from_values(values: [u16; 4]) -> Feedback {
+        Feedback {
+            very_good: values[0],
+            good: values[1],
+            bad: values[2],
+            very_bad: values[3],
         }
-        if values.len() >= 2 {
-            result.good = values[1]
-        }
-        if values.len() >= 3 {
-            result.bad = values[2]
-        }
-        if values.len() >= 4 {
-            result.very_bad = values[3]
-        }
-
-        result
     }
 
     pub fn count_votes(&self) -> u16 {
@@ -336,7 +321,7 @@ impl Client<LoggedIn> {
         {
             Ok(res) => match res.status() {
                 StatusCode::OK => Ok(Feedback::from_values(
-                    res.json::<Vec<u16>>()
+                    res.json::<[u16; 4]>()
                         .await
                         .map_err(|err| ParserError(err.to_string()))?,
                 )),
