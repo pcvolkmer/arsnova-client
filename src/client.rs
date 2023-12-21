@@ -221,6 +221,8 @@ impl Client {
     /// Constructs a new ARSnova client
     ///
     /// This method fails whenever the supplied Url cannot be parsed.
+    ///
+    /// If successful the result will be of type `Client<LoggedOut>`
     pub fn new<U: IntoUrl>(api_url: U) -> Result<Client, ClientError> {
         let client = reqwest::Client::builder()
             .user_agent(format!("arsnova-cli-client/{}", env!("CARGO_PKG_VERSION")))
@@ -237,6 +239,12 @@ impl Client {
 }
 
 impl Client<LoggedOut> {
+    /// Tries to login and request a new token if client is not logged in yet
+    ///
+    /// This method fails if a connection error occurs or the response cannot
+    /// be handled.
+    ///
+    /// If successful the result will be of type `Client<LoggedIn>`
     pub async fn guest_login(self) -> Result<Client<LoggedIn>, ClientError> {
         match self
             .http_client
@@ -259,6 +267,9 @@ impl Client<LoggedOut> {
 }
 
 impl Client<LoggedIn> {
+    /// Logout the client and discard existing token if not logged in
+    ///
+    /// If successful the result will be of type `Client<LoggedOut>`
     pub fn logout(self) -> Client<LoggedOut> {
         Client {
             api_url: self.api_url,
@@ -268,6 +279,10 @@ impl Client<LoggedIn> {
         }
     }
 
+    /// Requests `RoomInfo` for given 8-digit room ID
+    ///
+    /// This method fails on connection or response errors and if
+    /// no room is available with given room ID.
     pub async fn get_room_info(&self, short_id: &str) -> Result<RoomInfo, ClientError> {
         let token = self.token.as_ref().unwrap();
 
@@ -305,6 +320,10 @@ impl Client<LoggedIn> {
         })
     }
 
+    /// Requests `Feedback` for given 8-digit room ID
+    ///
+    /// This method fails on connection or response errors and if
+    /// no room is available with given room ID.
     pub async fn get_feedback(&self, short_id: &str) -> Result<Feedback, ClientError> {
         let room_info = self.get_room_info(short_id).await?;
 
@@ -328,6 +347,12 @@ impl Client<LoggedIn> {
         }
     }
 
+    /// Registers a handler to get notifications on feedback change.
+    ///
+    /// This is done by using websocket connections to ARSnova.
+    ///
+    /// This method fails on connection or response errors and if
+    /// no room is available with given room ID.
     pub async fn on_feedback_changed(
         &self,
         short_id: &str,
