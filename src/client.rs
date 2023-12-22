@@ -18,7 +18,7 @@
  */
 
 use std::error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::time::Duration;
 
@@ -124,6 +124,43 @@ struct WsFeedbackPayload {
 impl WsFeedbackPayload {
     fn get_feedback(self) -> Feedback {
         Feedback::from_values(self.values)
+    }
+}
+
+#[derive(Debug)]
+struct WsCreateFeedbackMessage {
+    room_id: String,
+    user_id: String,
+    value: u8,
+}
+
+impl WsCreateFeedbackMessage {
+    fn new(room_id: &str, user_id: &str, value: FeedbackValue) -> WsCreateFeedbackMessage {
+        WsCreateFeedbackMessage {
+            room_id: room_id.into(),
+            user_id: user_id.into(),
+            value: value.into_u8(),
+        }
+    }
+}
+
+impl Display for WsCreateFeedbackMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let payload = json!({
+            "type": "CreateFeedback",
+            "payload": {
+                "roomId": self.room_id,
+                "userId": self.user_id,
+                "value": self.value
+            }
+        })
+        .to_string();
+
+        write!(f,
+                "SEND\ndestination:/queue/feedback.command\ncontent-type:application/json\ncontent-length:{}\n\n{}\0",
+                payload.chars().count(),
+                payload,
+            )
     }
 }
 
@@ -420,22 +457,9 @@ impl Client<LoggedIn> {
             {
                 Ok(_) => loop {
                     if let Some(value) = receiver.recv().await {
-                        let payload = json!({
-                            "type": "CreateFeedback",
-                            "payload": {
-                                "roomId": room_info.id,
-                                "userId": user_id,
-                                "value": value.into_u8()
-                            }
-                        })
-                        .to_string();
-
-                        let _ = write
-                                    .send(Message::Text(format!(
-                                        "SEND\ndestination:/queue/feedback.command\ncontent-type:application/json\ncontent-length:{}\n\n{}\0",
-                                        payload.chars().count(),
-                                        payload,
-                                    ))).await;
+                        let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value)
+                            .to_string();
+                        let _ = write.send(Message::Text(msg)).await;
                     };
                 },
                 Err(_) => Err(ConnectionError),
