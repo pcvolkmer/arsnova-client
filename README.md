@@ -40,7 +40,7 @@ To handle feedback changes, you can use a handler function or forward the feedba
 Handle feedback changes using a function:
 
 ```rust
-client.on_feedback_changed( & cli.room, FeedbackHandler::Fn(|feedback| {/*...*/})).await;
+let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::Fn(|feedback| {/*...*/})).await;
 ```
 
 Forward feedback to a channel:
@@ -48,7 +48,17 @@ Forward feedback to a channel:
 ```rust
 let (tx, rx) = tokio::sync::mpsc::channel::<Feedback>(10);
 
-client.on_feedback_changed( & cli.room, FeedbackHandler::Sender(tx.clone())).await;
+let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone())).await;
+```
+
+#### Send feedback
+
+Register a channel receiver and send incoming feedback using the client.
+
+```rust
+let (fb_tx, fb_rx) = channel::<FeedbackValue>(10);
+
+let _ = client.register_feedback_receiver(&cli.room, fb_rx).await;
 ```
 
 ## Example
