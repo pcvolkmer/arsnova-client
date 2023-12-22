@@ -19,4 +19,4 @@
 
 pub mod client;
 
-pub use client::{Client, Feedback, FeedbackHandler, RoomInfo};
+pub use client::{Client, Feedback, FeedbackHandler, FeedbackValue, RoomInfo};

@@ -34,7 +34,7 @@ use ratatui::Terminal;
 use tokio::select;
 use tokio::sync::mpsc::{channel, Receiver};
 
-use arsnova_client::{Client, Feedback, FeedbackHandler};
+use arsnova_client::{Client, Feedback, FeedbackHandler, FeedbackValue};
 
 #[derive(Parser)]
 #[command(author, version, about = "Terminal-based ARSnova live feedback client", long_about = None)]
@@ -64,7 +64,7 @@ async fn main() -> Result<(), ()> {
 
     let (tx, rx) = channel::<Feedback>(10);
 
-    let (fb_tx, fb_rx) = channel::<u8>(10);
+    let (fb_tx, fb_rx) = channel::<FeedbackValue>(10);
 
     let _ = tx
         .clone()
@@ -94,16 +94,16 @@ async fn main() -> Result<(), ()> {
                         match key.code {
                             KeyCode::Esc => break,
                             KeyCode::Char('a') | KeyCode::Char('1') => {
-                                let _ = fb_tx.send(0).await;
+                                let _ = fb_tx.send(FeedbackValue::VeryGood).await;
                             }
                             KeyCode::Char('b') | KeyCode::Char('2') => {
-                                let _ = fb_tx.send(1).await;
+                                let _ = fb_tx.send(FeedbackValue::Good).await;
                             }
                             KeyCode::Char('c') | KeyCode::Char('3') => {
-                                let _ = fb_tx.send(2).await;
+                                let _ = fb_tx.send(FeedbackValue::Bad).await;
                             }
                             KeyCode::Char('d') | KeyCode::Char('4') => {
-                                let _ = fb_tx.send(3).await;
+                                let _ = fb_tx.send(FeedbackValue::VeryBad).await;
                             }
                             _ => {}
                         };

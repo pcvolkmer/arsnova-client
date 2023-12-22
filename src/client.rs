@@ -174,6 +174,30 @@ pub enum FeedbackHandler {
     Sender(Sender<Feedback>),
 }
 
+/// A possible feedback value
+pub enum FeedbackValue {
+    VeryGood,
+    A,
+    Good,
+    B,
+    Bad,
+    C,
+    VeryBad,
+    D,
+}
+
+impl FeedbackValue {
+    /// Returns internal u8 representation
+    fn into_u8(self) -> u8 {
+        match self {
+            FeedbackValue::VeryGood | FeedbackValue::A => 0,
+            FeedbackValue::Good | FeedbackValue::B => 1,
+            FeedbackValue::Bad | FeedbackValue::C => 2,
+            FeedbackValue::VeryBad | FeedbackValue::D => 3,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientError {
     ConnectionError,
@@ -368,7 +392,7 @@ impl Client<LoggedIn> {
     pub async fn register_feedback_receiver(
         &self,
         short_id: &str,
-        mut receiver: Receiver<u8>,
+        mut receiver: Receiver<FeedbackValue>,
     ) -> Result<(), ClientError> {
         let room_info = self.get_room_info(short_id).await?;
 
@@ -401,7 +425,7 @@ impl Client<LoggedIn> {
                             "payload": {
                                 "roomId": room_info.id,
                                 "userId": user_id,
-                                "value": value
+                                "value": value.into_u8()
                             }
                         })
                         .to_string();
