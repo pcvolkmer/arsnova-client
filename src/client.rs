@@ -28,8 +28,8 @@ use futures_util::{SinkExt, StreamExt};
 use reqwest::{IntoUrl, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::join;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::{join, select};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
@@ -212,6 +212,7 @@ pub enum FeedbackHandler {
 }
 
 /// A possible feedback value
+#[derive(Clone)]
 pub enum FeedbackValue {
     VeryGood,
     A,
@@ -456,11 +457,16 @@ impl Client<LoggedIn> {
                 .await
             {
                 Ok(_) => loop {
-                    if let Some(value) = receiver.recv().await {
-                        let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value)
-                            .to_string();
-                        let _ = write.send(Message::Text(msg)).await;
-                    };
+                    select!(
+                        Some(value) = receiver.recv() =>
+                        {
+                            let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value.to_owned()).to_string();
+                            let _ = write.send(Message::Text(msg)).await;
+                        },
+                        _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                            let _ = write.send(Message::Text("\n".to_string())).await;
+                        }
+                    )
                 },
                 Err(_) => Err(ConnectionError),
             };
