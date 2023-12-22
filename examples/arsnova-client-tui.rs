@@ -64,6 +64,8 @@ async fn main() -> Result<(), ()> {
 
     let (tx, rx) = channel::<Feedback>(10);
 
+    let (fb_tx, fb_rx) = channel::<u8>(10);
+
     let _ = tx
         .clone()
         .send(client.get_feedback(&cli.room).await.unwrap())
@@ -81,25 +83,43 @@ async fn main() -> Result<(), ()> {
 
     let l2 = create_ui(&mut terminal, &title, rx);
 
-    let l3 = tokio::spawn(async {
+    let l3 = tokio::spawn(async move {
         loop {
             if event::poll(std::time::Duration::from_millis(16))
                 .map_err(|_| ())
                 .is_ok()
             {
                 if let event::Event::Key(key) = event::read().map_err(|_| ()).unwrap() {
-                    if key.kind == KeyEventKind::Press && key.code == KeyCode::Esc {
-                        break;
+                    if key.kind == KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Esc => break,
+                            KeyCode::Char('a') | KeyCode::Char('1') => {
+                                let _ = fb_tx.send(0).await;
+                            }
+                            KeyCode::Char('b') | KeyCode::Char('2') => {
+                                let _ = fb_tx.send(1).await;
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('3') => {
+                                let _ = fb_tx.send(2).await;
+                            }
+                            KeyCode::Char('d') | KeyCode::Char('4') => {
+                                let _ = fb_tx.send(3).await;
+                            }
+                            _ => {}
+                        };
                     }
                 }
             }
         }
     });
 
+    let l4 = client.register_feedback_receiver(&cli.room, fb_rx);
+
     select! {
         _ = l1 => {},
         _ = l2 => {},
         _ = l3 => {},
+        _ = l4 => {}
     }
 
     let _ = stdout().execute(LeaveAlternateScreen).map_err(|_| ());
@@ -113,39 +133,47 @@ async fn create_ui(
     title: &str,
     mut rx: Receiver<Feedback>,
 ) -> Result<(), ()> {
-    fn feedback_paragraph(feedback: &Feedback, idx: usize, width: usize) -> Paragraph<'static> {
-        let value = match idx {
-            0 => feedback.very_good,
-            1 => feedback.good,
-            2 => feedback.bad,
-            3 => feedback.very_bad,
-            _ => 0,
+    const ICONS: [&str; 4] = ["Super", "Gut", "Nicht so gut", "Schlecht"];
+
+    let feedback_paragraph =
+        |feedback: &Feedback, idx: usize, width: usize| -> Paragraph<'static> {
+            let value = match idx {
+                0 => feedback.very_good,
+                1 => feedback.good,
+                2 => feedback.bad,
+                3 => feedback.very_bad,
+                _ => 0,
+            };
+
+            let icons = ICONS
+                .iter()
+                .map(|icon| format!("{: <12}", icon))
+                .collect::<Vec<_>>();
+
+            let icon = match idx {
+                0 => &icons[0],
+                1 => &icons[1],
+                2 => &icons[2],
+                3 => &icons[3],
+                _ => "            ",
+            };
+
+            let width = width - 24;
+
+            let l = ((value as f32 / feedback.count_votes() as f32) * width as f32) as usize;
+
+            match idx {
+                0..=3 => Paragraph::new(Line::from(vec![
+                    Span::raw(format!("{} : ", icon)),
+                    Span::raw(format!("[{: >5}] ", value)).dim(),
+                    Span::raw("■".to_string().repeat(l).to_string())
+                        .green()
+                        .on_black(),
+                    Span::raw(" ".to_string().repeat(width - l).to_string()).on_black(),
+                ])),
+                _ => Paragraph::default(),
+            }
         };
-
-        let icon = match idx {
-            0 => "Super       ",
-            1 => "Gut         ",
-            2 => "Nicht so gut",
-            3 => "Schlecht    ",
-            _ => "            ",
-        };
-
-        let width = width - 24;
-
-        let l = ((value as f32 / feedback.count_votes() as f32) * width as f32) as usize;
-
-        match idx {
-            0..=3 => Paragraph::new(Line::from(vec![
-                Span::raw(format!("{} : ", icon)),
-                Span::raw(format!("[{: >5}] ", value)).dim(),
-                Span::raw("■".to_string().repeat(l).to_string())
-                    .green()
-                    .on_black(),
-                Span::raw(" ".to_string().repeat(width - l).to_string()).on_black(),
-            ])),
-            _ => Paragraph::default(),
-        }
-    }
 
     loop {
         let feedback = match rx.recv().await {
@@ -156,9 +184,11 @@ async fn create_ui(
         let _ = terminal.draw(|frame| {
             let layout = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
+                .constraints([
                     Constraint::Max(1),
                     Constraint::Max(6),
+                    Constraint::Max(2),
+                    Constraint::Max(1),
                     Constraint::Min(1),
                     Constraint::Max(1),
                 ])
@@ -185,12 +215,12 @@ async fn create_ui(
                 Paragraph::new("Beenden mit <Esc>")
                     .on_blue()
                     .alignment(Alignment::Left),
-                layout[3],
+                layout[5],
             );
 
             let feedback_layout = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
+                .constraints([
                     Constraint::Max(1),
                     Constraint::Max(1),
                     Constraint::Max(1),
@@ -203,6 +233,31 @@ async fn create_ui(
                 frame.render_widget(
                     feedback_paragraph(&feedback, idx, feedback_layout[idx].width as usize),
                     feedback_layout[idx],
+                )
+            });
+
+            let button_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Min(0),
+                ])
+                .split(layout[3]);
+
+            ICONS.iter().enumerate().for_each(|(idx, label)| {
+                frame.render_widget(
+                    Paragraph::new(Line::from(vec![
+                        Span::raw(format!(" {} ", idx + 1))
+                            .white()
+                            .on_magenta()
+                            .bold(),
+                        Span::raw(format!("{: ^14}", label)).white().on_black(),
+                    ]))
+                    .alignment(Alignment::Center),
+                    button_layout[idx],
                 )
             });
         });

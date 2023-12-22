@@ -29,7 +29,7 @@ use reqwest::{IntoUrl, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::join;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
@@ -359,6 +359,66 @@ impl Client<LoggedIn> {
             },
             Err(_) => Err(ConnectionError),
         }
+    }
+
+    /// Register feedback channel receiver and send incoming feedback to service
+    ///
+    /// This method fails on connection or response errors and if
+    /// no room is available with given room ID.
+    pub async fn register_feedback_receiver(
+        &self,
+        short_id: &str,
+        mut receiver: Receiver<u8>,
+    ) -> Result<(), ClientError> {
+        let room_info = self.get_room_info(short_id).await?;
+
+        let ws_url = self.api_url.replace("http", "ws");
+        let (socket, _) = connect_async(Url::parse(&format!("{}/ws/websocket", ws_url)).unwrap())
+            .await
+            .map_err(|_| ConnectionError)?;
+
+        let (mut write, _) = socket.split();
+
+        let user_id = self.get_user_id().unwrap_or_default();
+
+        if write
+            .send(Message::Text(
+                WsConnectMessage::new(self.token.as_ref().unwrap()).to_string(),
+            ))
+            .await
+            .is_ok()
+        {
+            return match write
+                .send(Message::Text(
+                    WsSubscribeMessage::new(&room_info.id).to_string(),
+                ))
+                .await
+            {
+                Ok(_) => loop {
+                    if let Some(value) = receiver.recv().await {
+                        let payload = json!({
+                            "type": "CreateFeedback",
+                            "payload": {
+                                "roomId": room_info.id,
+                                "userId": user_id,
+                                "value": value
+                            }
+                        })
+                        .to_string();
+
+                        let _ = write
+                                    .send(Message::Text(format!(
+                                        "SEND\ndestination:/queue/feedback.command\ncontent-type:application/json\ncontent-length:{}\n\n{}\0",
+                                        payload.chars().count(),
+                                        payload,
+                                    ))).await;
+                    };
+                },
+                Err(_) => Err(ConnectionError),
+            };
+        }
+
+        Err(ConnectionError)
     }
 
     /// Registers a handler to get notifications on feedback change.
