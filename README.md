@@ -56,8 +56,24 @@ client.on_feedback_changed( & cli.room, FeedbackHandler::Sender(tx.clone())).awa
 See [`examples/arsnova-client-tui.rs`](examples/arsnova-client-tui.rs) for a simple terminal-based feedback client
 application.
 
-```bash
-arsnova-client-tui 23269388
+### How to run
+
+```shell
+cargo run --example arsnova-client-tui
+```
+
+```
+Terminal-based ARSnova live feedback client
+
+Usage: arsnova-client-tui [OPTIONS] <ROOM>
+
+Arguments:
+  <ROOM>  Raum
+
+Options:
+  -u, --url <URL>  API-URL [default: https://ars.particify.de/api]
+  -h, --help       Print help
+  -V, --version    Print version
 ```
 
 ![arsnova-client-tui](examples/arsnova-client.gif)
