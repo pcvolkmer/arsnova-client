@@ -21,6 +21,7 @@ serde_json = "1.0"
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros"], default-features = false }
 tokio-tungstenite = { version = "0.21", features = ["connect", "rustls-tls-webpki-roots"], default-features = false }
 url = "2.5"
+base64 = "0.21"
 
 [profile.release]
 opt-level = "s"

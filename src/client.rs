@@ -22,9 +22,12 @@ use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 use std::time::Duration;
 
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use reqwest::{IntoUrl, StatusCode};
 use serde::Deserialize;
+use serde_json::json;
 use tokio::join;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::connect_async;
@@ -39,6 +42,11 @@ use crate::client::ClientError::{
 struct LoginResponse {
     #[serde(rename = "token")]
     token: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct TokenClaim {
+    sub: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -252,6 +260,27 @@ impl Client<LoggedOut> {
 }
 
 impl Client<LoggedIn> {
+    /// Get user ID extracted from client token
+    ///
+    /// This method fails if the token cannot be parsed
+    fn get_user_id(&self) -> Result<String, ClientError> {
+        let token = self.token.clone().unwrap_or_default();
+        let mut token_parts = token.split('.');
+
+        match token_parts.nth(1) {
+            None => Err(ParserError("Unparsable token".into())),
+            Some(part) => match STANDARD_NO_PAD.decode(part) {
+                Ok(d) => match serde_json::from_str::<TokenClaim>(
+                    &String::from_utf8(d).unwrap_or_default(),
+                ) {
+                    Ok(claim) => Ok(claim.sub),
+                    Err(err) => Err(ParserError(format!("Unparsable token claim: {}", err))),
+                },
+                Err(err) => Err(ParserError(format!("Unparsable token: {}", err))),
+            },
+        }
+    }
+
     /// Logout the client and discard existing token if not logged in
     ///
     /// If successful the result will be of type `Client<LoggedOut>`
