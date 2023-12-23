@@ -51,7 +51,7 @@ pub struct Cli {
     url: String,
 }
 
-#[tokio::main(worker_threads = 3)]
+#[tokio::main(worker_threads = 2)]
 async fn main() -> Result<(), ()> {
     let cli = Cli::parse();
 
