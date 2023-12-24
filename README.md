@@ -25,6 +25,16 @@ let room_info = client.get_room_info("12345678").await.expect("room information"
 
 You can get feedback information in two different ways: Direct request and getting notified about changes.
 
+#### Send feedback
+
+Register a channel receiver and send incoming feedback using the client.
+
+```rust
+let (fb_tx, fb_rx) = channel::<FeedbackValue>(10);
+
+let _ = client.register_feedback_receiver(&cli.room, fb_rx).await;
+```
+
 #### Direct request
 
 You can request (poll) the current feedback:
@@ -46,19 +56,30 @@ let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::Fn(|feedback| {/*
 Forward feedback to a channel:
 
 ```rust
-let (tx, rx) = tokio::sync::mpsc::channel::<Feedback>(10);
+let (in_tx, in_rx) = tokio::sync::mpsc::channel::<Feedback>(10);
 
-let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone())).await;
+let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(in_tx)).await;
 ```
 
-#### Send feedback
+#### Both: Send and receive Feedback updates
 
-Register a channel receiver and send incoming feedback using the client.
+Handle remote feedback changes and feedback updates to be sent:
+
+```mermaid
+flowchart LR
+    UI["`**UI**`"] --> A[out_tx]
+    A[out_tx] -->|FeedbackValue| B[out_rx]
+    B --> W["`*WebSocket connection*`"]
+    D[in_tx] --> |Feedback| C[in_rx]
+    W --> D
+    C --> UI
+```
 
 ```rust
-let (fb_tx, fb_rx) = channel::<FeedbackValue>(10);
+let (in_tx, inrx) = channel::<Feedback>(10); // Incoming from remote
+let (out_tx, out_rx) = channel::<FeedbackValue>(10); // Outgoing to remote
 
-let _ = client.register_feedback_receiver(&cli.room, fb_rx).await;
+let _ = client.on_feedback_changed(&cli.room, FeedbackHandler::SenderReceiver(in_tx, out_rx)).await;
 ```
 
 ## Example

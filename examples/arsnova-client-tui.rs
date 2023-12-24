@@ -62,11 +62,10 @@ async fn main() -> Result<(), ()> {
 
     let client = client.guest_login().await.map_err(|_| ())?;
 
-    let (tx, rx) = channel::<Feedback>(10);
+    let (in_tx, in_rx) = channel::<Feedback>(10);
+    let (out_tx, out_rx) = channel::<FeedbackValue>(10);
 
-    let (fb_tx, fb_rx) = channel::<FeedbackValue>(10);
-
-    let _ = tx
+    let _ = in_tx
         .clone()
         .send(client.get_feedback(&cli.room).await.unwrap())
         .await;
@@ -76,12 +75,12 @@ async fn main() -> Result<(), ()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| ())?;
     terminal.clear().map_err(|_| ())?;
 
-    let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::Sender(tx.clone()));
+    let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::SenderReceiver(in_tx, out_rx));
 
     let room_info = client.get_room_info(&cli.room).await.map_err(|_| ())?;
     let title = format!("Live Feedback: {} ({})", room_info.name, room_info.short_id);
 
-    let l2 = create_ui(&mut terminal, &title, rx);
+    let l2 = create_ui(&mut terminal, &title, in_rx);
 
     let l3 = tokio::spawn(async move {
         loop {
@@ -94,16 +93,16 @@ async fn main() -> Result<(), ()> {
                         match key.code {
                             KeyCode::Esc => break,
                             KeyCode::Char('a') | KeyCode::Char('1') => {
-                                let _ = fb_tx.send(FeedbackValue::VeryGood).await;
+                                let _ = out_tx.send(FeedbackValue::VeryGood).await;
                             }
                             KeyCode::Char('b') | KeyCode::Char('2') => {
-                                let _ = fb_tx.send(FeedbackValue::Good).await;
+                                let _ = out_tx.send(FeedbackValue::Good).await;
                             }
                             KeyCode::Char('c') | KeyCode::Char('3') => {
-                                let _ = fb_tx.send(FeedbackValue::Bad).await;
+                                let _ = out_tx.send(FeedbackValue::Bad).await;
                             }
                             KeyCode::Char('d') | KeyCode::Char('4') => {
-                                let _ = fb_tx.send(FeedbackValue::VeryBad).await;
+                                let _ = out_tx.send(FeedbackValue::VeryBad).await;
                             }
                             _ => {}
                         };
@@ -113,13 +112,10 @@ async fn main() -> Result<(), ()> {
         }
     });
 
-    let l4 = client.register_feedback_receiver(&cli.room, fb_rx);
-
     select! {
         _ = l1 => {},
         _ = l2 => {},
-        _ = l3 => {},
-        _ = l4 => {}
+        _ = l3 => {}
     }
 
     let _ = stdout().execute(LeaveAlternateScreen).map_err(|_| ());

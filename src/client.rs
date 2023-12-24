@@ -207,8 +207,12 @@ impl Feedback {
 
 #[allow(dead_code)]
 pub enum FeedbackHandler {
+    /// Handle incoming `Feedback` using a fn
     Fn(fn(&Feedback)),
+    /// Handle incoming `Feedback` by sending it to a `Sender<Feedback>`
     Sender(Sender<Feedback>),
+    /// Bidirectional handler for incoming `Feedback` and outgoing `FeedbackValue`
+    SenderReceiver(Sender<Feedback>, Receiver<FeedbackValue>),
 }
 
 /// A possible feedback value
@@ -508,37 +512,78 @@ impl Client<LoggedIn> {
                 ))
                 .await
             {
-                Ok(_) => loop {
-                    select! {
-                        Some(next) = read.next() => {
-                            match &next {
-                                Ok(msg) => {
-                                    if msg.is_text() && msg.clone().into_text().unwrap().starts_with("MESSAGE") {
-                                        if let Ok(msg) = WsFeedbackMessage::parse(msg.to_text().unwrap()) {
-                                            if msg.body.body_type == "FeedbackChanged" {
-                                                let feedback = msg.body.payload.get_feedback();
-                                                match &handler {
-                                                    FeedbackHandler::Fn(f) => f(&feedback),
-                                                    FeedbackHandler::Sender(tx) => {
-                                                        let _ = tx.send(feedback).await;
-                                                    }
-                                                };
-                                            }
-                                        }
-                                    }
+                Ok(_) => match handler {
+                    FeedbackHandler::Fn(f) => loop {
+                        select! {
+                            Some(next) = read.next() => {
+                                match &next {
+                                    Ok(msg) => self.handle_incoming_feedback_with_fn(msg, &f).await,
+                                    Err(_) => break
                                 }
-                                Err(_) => break
+                            }
+                            _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                                let _ = write.send(Message::Text("\n".to_string())).await;
                             }
                         }
-                        _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                            let _ = write.send(Message::Text("\n".to_string())).await;
+                    },
+                    FeedbackHandler::Sender(tx) => loop {
+                        select! {
+                            Some(next) = read.next() => {
+                                match &next {
+                                    Ok(msg) => self.handle_incoming_feedback_with_sender(msg, &tx).await,
+                                    Err(_) => break
+                                }
+                            }
+                            _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                                let _ = write.send(Message::Text("\n".to_string())).await;
+                            }
                         }
-                    }
+                    },
+                    FeedbackHandler::SenderReceiver(tx, mut rx) => loop {
+                        select! {
+                            Some(next) = read.next() => {
+                                match &next {
+                                    Ok(msg) => self.handle_incoming_feedback_with_sender(msg, &tx).await,
+                                    Err(_) => break
+                                }
+                            }
+                            Some(value) = rx.recv() => {
+                                let user_id = self.get_user_id().unwrap_or_default();
+                                let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value.to_owned()).to_string();
+                                let _ = write.send(Message::Text(msg)).await;
+                            }
+                            _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                                let _ = write.send(Message::Text("\n".to_string())).await;
+                            }
+                        }
+                    },
                 },
                 Err(_) => return Err(ConnectionError),
             }
         }
 
         Err(ConnectionError)
+    }
+
+    async fn handle_incoming_feedback_with_fn(&self, msg: &Message, f: &fn(&Feedback)) {
+        if msg.is_text() && msg.clone().into_text().unwrap().starts_with("MESSAGE") {
+            if let Ok(msg) = WsFeedbackMessage::parse(msg.to_text().unwrap()) {
+                if msg.body.body_type == "FeedbackChanged" {
+                    let feedback = msg.body.payload.get_feedback();
+                    f(&feedback);
+                }
+            }
+        }
+    }
+
+    async fn handle_incoming_feedback_with_sender(&self, msg: &Message, tx: &Sender<Feedback>) {
+        if msg.is_text() && msg.clone().into_text().unwrap().starts_with("MESSAGE") {
+            if let Ok(msg) = WsFeedbackMessage::parse(msg.to_text().unwrap()) {
+                if msg.body.body_type == "FeedbackChanged" {
+                    let feedback = msg.body.payload.get_feedback();
+                    let _ = tx.send(feedback).await;
+                }
+            }
+        }
     }
 }
