@@ -329,7 +329,7 @@ impl Client<LoggedIn> {
     /// Get user ID extracted from client token
     ///
     /// This method fails if the token cannot be parsed
-    fn get_user_id(&self) -> Result<String, ClientError> {
+    pub fn get_user_id(&self) -> Result<String, ClientError> {
         let token = self.token.clone().unwrap_or_default();
         let mut token_parts = token.split('.');
 
