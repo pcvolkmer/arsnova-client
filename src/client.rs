@@ -187,6 +187,18 @@ pub struct SummaryResponse {
     pub stats: RoomStats,
 }
 
+impl Default for SummaryResponse {
+    fn default() -> Self {
+        SummaryResponse {
+            stats: RoomStats {
+                ack_comment_count: 0,
+                content_count: 0,
+                room_user_count: 0,
+            },
+        }
+    }
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct RoomStats {
     #[serde(rename = "contentCount")]
@@ -464,7 +476,13 @@ impl Client<LoggedIn> {
                     .json::<Vec<SummaryResponse>>()
                     .await
                     .map_err(|err| ParserError(err.to_string()))
-                    .map(|summary_response| summary_response.first().unwrap().stats.clone()))?,
+                    .map(|summary_response| {
+                        summary_response
+                            .first()
+                            .unwrap_or(&SummaryResponse::default())
+                            .stats
+                            .clone()
+                    }))?,
                 StatusCode::NOT_FOUND => Err(RoomNotFoundError(short_id.into())),
                 _ => Err(ConnectionError),
             },
