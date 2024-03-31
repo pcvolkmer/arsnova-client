@@ -78,7 +78,11 @@ async fn main() -> Result<(), ()> {
     let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::SenderReceiver(in_tx, out_rx));
 
     let room_info = client.get_room_info(&cli.room).await.map_err(|_| ())?;
-    let title = format!("Live Feedback: {} ({})", room_info.name, room_info.short_id);
+    let room_stats = client.get_room_stats(&cli.room).await.map_err(|_| ())?;
+    let title = format!(
+        "Live Feedback: {} ({}) - 👥: {}",
+        room_info.name, room_info.short_id, room_stats.room_user_count
+    );
 
     let l2 = create_ui(&mut terminal, &title, in_rx);
 

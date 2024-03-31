@@ -182,6 +182,21 @@ pub struct RoomInfo {
     pub description: String,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+pub struct SummaryResponse {
+    pub stats: RoomStats,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct RoomStats {
+    #[serde(rename = "contentCount")]
+    pub content_count: usize,
+    #[serde(rename = "ackCommentCount")]
+    pub ack_comment_count: usize,
+    #[serde(rename = "roomUserCount")]
+    pub room_user_count: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct Feedback {
     pub very_good: u16,
@@ -420,6 +435,36 @@ impl Client<LoggedIn> {
                         .await
                         .map_err(|err| ParserError(err.to_string()))?,
                 )),
+                StatusCode::NOT_FOUND => Err(RoomNotFoundError(short_id.into())),
+                _ => Err(ConnectionError),
+            },
+            Err(_) => Err(ConnectionError),
+        }
+    }
+
+    /// Requests `RoomStats` for given 8-digit room ID
+    ///
+    /// This method fails on connection or response errors and if
+    /// no room is available with given room ID.
+    pub async fn get_room_stats(&self, short_id: &str) -> Result<RoomStats, ClientError> {
+        let room_info = self.get_room_info(short_id).await?;
+
+        match self
+            .http_client
+            .get(format!(
+                "{}/_view/room/summary?ids={}",
+                self.api_url, room_info.id
+            ))
+            .bearer_auth(self.token.as_ref().unwrap_or(&"".to_string()).to_string())
+            .send()
+            .await
+        {
+            Ok(res) => match res.status() {
+                StatusCode::OK => Ok(res
+                    .json::<Vec<SummaryResponse>>()
+                    .await
+                    .map_err(|err| ParserError(err.to_string()))
+                    .map(|summary_response| summary_response.first().unwrap().stats.clone()))?,
                 StatusCode::NOT_FOUND => Err(RoomNotFoundError(short_id.into())),
                 _ => Err(ConnectionError),
             },
