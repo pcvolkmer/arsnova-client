@@ -81,15 +81,25 @@ impl Display for WsConnectMessage {
     }
 }
 
-struct WsSubscribeMessage {
+struct WsSubscribeFeedbackMessage {
     room_id: String,
 }
 
-impl WsSubscribeMessage {
-    fn new(room_id: &str) -> WsSubscribeMessage {
-        WsSubscribeMessage {
+impl WsSubscribeFeedbackMessage {
+    fn new(room_id: &str) -> WsSubscribeFeedbackMessage {
+        WsSubscribeFeedbackMessage {
             room_id: room_id.to_string(),
         }
+    }
+}
+
+impl Display for WsSubscribeFeedbackMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str = format!(
+            "SUBSCRIBE\nid:sub-6\ndestination:/topic/{}.feedback.stream\n\n\0",
+            self.room_id
+        );
+        write!(f, "{}", str)
     }
 }
 
@@ -161,16 +171,6 @@ impl Display for WsCreateFeedbackMessage {
                 payload.chars().count(),
                 payload,
             )
-    }
-}
-
-impl Display for WsSubscribeMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let str = format!(
-            "SUBSCRIBE\nid:sub-6\ndestination:/topic/{}.feedback.stream\n\n\0",
-            self.room_id
-        );
-        write!(f, "{}", str)
     }
 }
 
@@ -519,7 +519,7 @@ impl Client<LoggedIn> {
         {
             return match write
                 .send(Message::Text(
-                    WsSubscribeMessage::new(&room_info.id).to_string(),
+                    WsSubscribeFeedbackMessage::new(&room_info.id).to_string(),
                 ))
                 .await
             {
@@ -571,7 +571,7 @@ impl Client<LoggedIn> {
         {
             match write
                 .send(Message::Text(
-                    WsSubscribeMessage::new(&room_info.id).to_string(),
+                    WsSubscribeFeedbackMessage::new(&room_info.id).to_string(),
                 ))
                 .await
             {
