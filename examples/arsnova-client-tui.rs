@@ -52,15 +52,18 @@ pub struct Cli {
 }
 
 #[tokio::main(worker_threads = 2)]
-async fn main() -> Result<(), ()> {
+async fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     let client = match Client::new(&cli.url) {
         Ok(client) => client,
-        Err(_) => return Err(()),
+        Err(_) => return Err("Cannot create client!".to_string()),
     };
 
-    let client = client.guest_login().await.map_err(|_| ())?;
+    let client = client
+        .guest_login()
+        .await
+        .map_err(|_| "Cannot login!".to_string())?;
 
     let (in_tx, in_rx) = channel::<Feedback>(10);
     let (out_tx, out_rx) = channel::<FeedbackValue>(10);
@@ -70,15 +73,25 @@ async fn main() -> Result<(), ()> {
         .send(client.get_feedback(&cli.room).await.unwrap())
         .await;
 
-    stdout().execute(EnterAlternateScreen).map_err(|_| ())?;
-    enable_raw_mode().map_err(|_| ())?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| ())?;
-    terminal.clear().map_err(|_| ())?;
+    stdout()
+        .execute(EnterAlternateScreen)
+        .map_err(|_| String::new())?;
+    enable_raw_mode().map_err(|_| String::new())?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).map_err(|_| String::new())?;
+    terminal.clear().map_err(|_| String::new())?;
 
     let l1 = client.on_feedback_changed(&cli.room, FeedbackHandler::SenderReceiver(in_tx, out_rx));
 
-    let room_info = client.get_room_info(&cli.room).await.map_err(|_| ())?;
-    let room_stats = client.get_room_stats(&cli.room).await.map_err(|_| ())?;
+    let room_info = client.get_room_info(&cli.room).await.map_err(|_| {
+        let _ = stdout().execute(LeaveAlternateScreen).map_err(|_| ());
+        let _ = disable_raw_mode().map_err(|_| ()).map_err(|_| ());
+        "Cannot request room information!".to_string()
+    })?;
+    let room_stats = client.get_room_stats(&cli.room).await.map_err(|_| {
+        let _ = stdout().execute(LeaveAlternateScreen).map_err(|_| ());
+        let _ = disable_raw_mode().map_err(|_| ()).map_err(|_| ());
+        "Cannot request room stats!".to_string()
+    })?;
     let title = format!(
         "Live Feedback: {} ({}) - 👥: {}",
         room_info.name, room_info.short_id, room_stats.room_user_count
