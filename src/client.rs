@@ -81,6 +81,28 @@ impl Display for WsConnectMessage {
     }
 }
 
+struct WsSubscribeMessage {
+    room_id: String,
+}
+
+impl WsSubscribeMessage {
+    fn new(room_id: &str) -> WsSubscribeMessage {
+        WsSubscribeMessage {
+            room_id: room_id.to_string(),
+        }
+    }
+}
+
+impl Display for WsSubscribeMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str = format!(
+            "SUBSCRIBE\nid:sub-6\ndestination:/topic/{}.stream\n\n\0",
+            self.room_id
+        );
+        write!(f, "{}", str)
+    }
+}
+
 struct WsSubscribeFeedbackMessage {
     room_id: String,
 }
