@@ -87,10 +87,10 @@ async fn main() -> Result<(), String> {
         let _ = disable_raw_mode().map_err(|_| ()).map_err(|_| ());
         "Cannot request room information!".to_string()
     })?;
-    let room_stats = client.get_room_stats(&cli.room).await.map_err(|_| {
+    let room_stats = client.get_room_stats(&cli.room).await.map_err(|err| {
         let _ = stdout().execute(LeaveAlternateScreen).map_err(|_| ());
         let _ = disable_raw_mode().map_err(|_| ()).map_err(|_| ());
-        "Cannot request room stats!".to_string()
+        err.to_string()
     })?;
     let title = format!(
         "Live Feedback: {} ({}) - 👥: {}",
