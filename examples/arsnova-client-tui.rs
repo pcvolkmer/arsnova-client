@@ -97,7 +97,12 @@ async fn main() -> Result<(), String> {
         room_info.name, room_info.short_id, room_stats.room_user_count
     );
 
-    let l2 = create_ui(&mut terminal, &title, in_rx);
+    let l2 = create_ui(
+        &mut terminal,
+        &title,
+        room_info.is_closed() || room_info.is_feedback_locked(),
+        in_rx,
+    );
 
     let l3 = tokio::spawn(async move {
         loop {
@@ -144,6 +149,7 @@ async fn main() -> Result<(), String> {
 async fn create_ui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     title: &str,
+    disabled: bool,
     mut rx: Receiver<Feedback>,
 ) -> Result<(), ()> {
     const ICONS: [&str; 4] = ["Super", "Gut", "Nicht so gut", "Schlecht"];
@@ -216,13 +222,22 @@ async fn create_ui(
                 layout[0],
             );
 
-            frame.render_widget(
-                Paragraph::new(format!("{} Antworten", feedback.count_votes()))
-                    .white()
-                    .bold()
-                    .alignment(Alignment::Center),
-                layout[2],
-            );
+            if disabled {
+                frame.render_widget(
+                    Paragraph::new("Feedback gestoppt")
+                        .white()
+                        .alignment(Alignment::Center),
+                    layout[2],
+                )
+            } else {
+                frame.render_widget(
+                    Paragraph::new(format!("{} Antworten", feedback.count_votes()))
+                        .white()
+                        .bold()
+                        .alignment(Alignment::Center),
+                    layout[2],
+                );
+            }
 
             frame.render_widget(
                 Paragraph::new("Beenden mit <Esc>")

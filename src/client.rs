@@ -199,7 +199,7 @@ pub struct RoomInfo {
 
 impl RoomInfo {
     /// Indicates if room is closed
-    pub fn is_closes(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.closed
     }
 
@@ -212,7 +212,7 @@ impl RoomInfo {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomInfoSettings {
-    pub feedback_locked: bool
+    pub feedback_locked: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
