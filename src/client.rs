@@ -49,16 +49,6 @@ struct TokenClaim {
     sub: String,
 }
 
-#[derive(Deserialize, Debug)]
-struct MembershipResponse {
-    #[serde(rename = "id")]
-    id: String,
-    #[serde(rename = "shortId")]
-    short_id: String,
-    #[serde(rename = "name")]
-    name: String,
-}
-
 struct WsConnectMessage {
     token: String,
 }
@@ -196,12 +186,33 @@ impl Display for WsCreateFeedbackMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct RoomInfo {
     pub id: String,
     pub short_id: String,
     pub name: String,
     pub description: String,
+    pub closed: bool,
+    pub settings: RoomInfoSettings,
+}
+
+impl RoomInfo {
+    /// Indicates if room is closed
+    pub fn is_closes(&self) -> bool {
+        self.closed
+    }
+
+    /// Indicates if room has locked feedback
+    pub fn is_feedback_locked(&self) -> bool {
+        self.settings.feedback_locked
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomInfoSettings {
+    pub feedback_locked: bool
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -410,12 +421,12 @@ impl Client<LoggedIn> {
 
     /// Requests `RoomInfo` for given 8-digit room ID
     ///
-    /// This method fails on connection or response errors and if
+    /// This method fails on connection or response errors, and if
     /// no room is available with given room ID.
     pub async fn get_room_info(&self, short_id: &str) -> Result<RoomInfo, ClientError> {
         let token = self.token.as_ref().unwrap();
 
-        let membership_response = match self
+        let room_info_response = match self
             .http_client
             .post(format!(
                 "{}/room/~{}/request-membership",
@@ -429,10 +440,27 @@ impl Client<LoggedIn> {
             .await
         {
             Ok(res) => match res.status() {
-                StatusCode::OK => res
-                    .json::<MembershipResponse>()
-                    .await
-                    .map_err(|err| ParserError(err.to_string()))?,
+                StatusCode::OK => {
+                    match self
+                        .http_client
+                        .get(format!("{}/room/~{}", self.api_url, short_id))
+                        .bearer_auth(token.to_string())
+                        .send()
+                        .await
+                    {
+                        Ok(res) => match res.status() {
+                            StatusCode::OK => res
+                                .json::<RoomInfo>()
+                                .await
+                                .map_err(|err| ParserError(err.to_string()))?,
+                            StatusCode::NOT_FOUND => {
+                                return Err(RoomNotFoundError(short_id.into()))
+                            }
+                            _ => return Err(ConnectionError),
+                        },
+                        _ => return Err(ConnectionError),
+                    }
+                }
                 StatusCode::NOT_FOUND => return Err(RoomNotFoundError(short_id.into())),
                 _ => return Err(ConnectionError),
             },
@@ -441,12 +469,7 @@ impl Client<LoggedIn> {
             }
         };
 
-        Ok(RoomInfo {
-            id: membership_response.id,
-            short_id: membership_response.short_id,
-            name: membership_response.name,
-            description: String::new(),
-        })
+        Ok(room_info_response)
     }
 
     /// Requests `Feedback` for given 8-digit room ID
