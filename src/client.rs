@@ -1,7 +1,7 @@
 /*
  * This file is part of arsnova-client
  *
- * Copyright (C) 2023  Paul-Christian Volkmer
+ * Copyright (C) 2025  Paul-Christian Volkmer
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -31,8 +31,9 @@ use serde_json::json;
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
-use url::Url;
+use tokio_tungstenite::tungstenite::protocol::frame::Utf8Bytes;
 
 use crate::client::ClientError::{
     ConnectionError, LoginError, ParserError, RoomNotFoundError, UrlError,
@@ -547,7 +548,7 @@ impl Client<LoggedIn> {
         let room_info = self.get_room_info(short_id).await?;
 
         let ws_url = self.api_url.replace("http", "ws");
-        let (socket, _) = connect_async(Url::parse(&format!("{}/ws/websocket", ws_url)).unwrap())
+        let (socket, _) = connect_async(format!("{}/ws/websocket", ws_url).into_client_request().unwrap())
             .await
             .map_err(|_| ConnectionError)?;
 
@@ -557,14 +558,14 @@ impl Client<LoggedIn> {
 
         if write
             .send(Message::Text(
-                WsConnectMessage::new(self.token.as_ref().unwrap()).to_string(),
+                Utf8Bytes::from(WsConnectMessage::new(self.token.as_ref().unwrap()).to_string()),
             ))
             .await
             .is_ok()
         {
             return match write
                 .send(Message::Text(
-                    WsSubscribeFeedbackMessage::new(&room_info.id).to_string(),
+                    Utf8Bytes::from(WsSubscribeFeedbackMessage::new(&room_info.id).to_string()),
                 ))
                 .await
             {
@@ -573,10 +574,10 @@ impl Client<LoggedIn> {
                         Some(value) = receiver.recv() =>
                         {
                             let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value.to_owned()).to_string();
-                            let _ = write.send(Message::Text(msg)).await;
+                            let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
                         },
                         _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                            let _ = write.send(Message::Text("\n".to_string())).await;
+                            let _ = write.send(Message::Text(Utf8Bytes::from("\n".to_string()))).await;
                         }
                     )
                 },
@@ -601,7 +602,7 @@ impl Client<LoggedIn> {
         let room_info = self.get_room_info(short_id).await?;
 
         let ws_url = self.api_url.replace("http", "ws");
-        let (socket, _) = connect_async(Url::parse(&format!("{}/ws/websocket", ws_url)).unwrap())
+        let (socket, _) = connect_async(format!("{}/ws/websocket", ws_url).as_str().into_client_request().unwrap())
             .await
             .map_err(|_| ConnectionError)?;
 
@@ -609,14 +610,14 @@ impl Client<LoggedIn> {
 
         if write
             .send(Message::Text(
-                WsConnectMessage::new(self.token.as_ref().unwrap()).to_string(),
+                Utf8Bytes::from(WsConnectMessage::new(self.token.as_ref().unwrap()).to_string()),
             ))
             .await
             .is_ok()
         {
             match write
                 .send(Message::Text(
-                    WsSubscribeFeedbackMessage::new(&room_info.id).to_string(),
+                    Utf8Bytes::from(WsSubscribeFeedbackMessage::new(&room_info.id).to_string()),
                 ))
                 .await
             {
@@ -630,7 +631,7 @@ impl Client<LoggedIn> {
                                 }
                             }
                             _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                                let _ = write.send(Message::Text("\n".to_string())).await;
+                                let _ = write.send(Message::Text(Utf8Bytes::from("\n".to_string()))).await;
                             }
                         }
                     },
@@ -643,7 +644,7 @@ impl Client<LoggedIn> {
                                 }
                             }
                             _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                                let _ = write.send(Message::Text("\n".to_string())).await;
+                                let _ = write.send(Message::Text(Utf8Bytes::from("\n".to_string()))).await;
                             }
                         }
                     },
@@ -658,10 +659,10 @@ impl Client<LoggedIn> {
                             Some(value) = rx.recv() => {
                                 let user_id = self.get_user_id().unwrap_or_default();
                                 let msg = WsCreateFeedbackMessage::new(&room_info.id, &user_id, value.to_owned()).to_string();
-                                let _ = write.send(Message::Text(msg)).await;
+                                let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
                             }
                             _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                                let _ = write.send(Message::Text("\n".to_string())).await;
+                                let _ = write.send(Message::Text(Utf8Bytes::from("\n".to_string()))).await;
                             }
                         }
                     },
@@ -674,7 +675,7 @@ impl Client<LoggedIn> {
     }
 
     async fn handle_incoming_feedback_with_fn(&self, msg: &Message, f: &fn(&Feedback)) {
-        if msg.is_text() && msg.clone().into_text().unwrap().starts_with("MESSAGE") {
+        if msg.is_text() && msg.clone().into_text().unwrap().to_string().starts_with("MESSAGE") {
             if let Ok(msg) = WsFeedbackMessage::parse(msg.to_text().unwrap()) {
                 if msg.body.body_type == "FeedbackChanged" {
                     let feedback = msg.body.payload.get_feedback();
@@ -685,7 +686,7 @@ impl Client<LoggedIn> {
     }
 
     async fn handle_incoming_feedback_with_sender(&self, msg: &Message, tx: &Sender<Feedback>) {
-        if msg.is_text() && msg.clone().into_text().unwrap().starts_with("MESSAGE") {
+        if msg.is_text() && msg.clone().into_text().unwrap().to_string().starts_with("MESSAGE") {
             if let Ok(msg) = WsFeedbackMessage::parse(msg.to_text().unwrap()) {
                 if msg.body.body_type == "FeedbackChanged" {
                     let feedback = msg.body.payload.get_feedback();
